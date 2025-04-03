@@ -9,6 +9,7 @@ from urllib.robotparser import RobotFileParser
 import os
 import pickle
 import random  # Import the random module
+from datetime import datetime
 
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 import tensorflow as tf
@@ -126,7 +127,7 @@ def get_url_tree(start_url, max_depth=3, resume_file="crawl_state.pkl"):
                     "url_queue": url_queue,
                     "run_count": run_count,
                 }, f)
-            print(f"Saved crawl state after {run_count} runs.")
+            print(f"Saved crawl state after {run_count} runs. {datetime.now()}")
             df = pd.DataFrame(results)
             df.to_csv(rf"C:\programming_projects\ASU\web_crawl\web_data\webpage_analysis_run_{run_count}.csv", index=False)
             results = []  # Clear results after saving to CSV
