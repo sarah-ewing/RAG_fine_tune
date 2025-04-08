@@ -1,3 +1,6 @@
 .*
 web_crawl/web_data/
+web_crawl/web_data_merged/
+web_crawl/__pycache__/
 cleaned_ASU_webpage.csv
+*.csv
