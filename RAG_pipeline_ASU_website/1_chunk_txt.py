@@ -1,7 +1,14 @@
 import pandas as pd
 
+from dotenv import load_dotenv
+
+import os
+
+load_dotenv()
+ASU_key = os.environ.get("ASU_key")  
+file_name = os.environ.get("file_name")  
+
 directory_path = 'C:\\programming_projects\\RAG_fine_tune\\web_crawl\\'
-file_name = 'cleaned_ASU_webpage_04_07_2025.csv'
 df = pd.read_csv(directory_path + file_name)
 df.rename(columns={'word_count': 'orig_word_count', 'char_count': 'orig_char_count'}, inplace = True)
 
@@ -33,7 +40,6 @@ def chunk_text_with_overlap(df, text_column, chunk_size=500, overlap=20):
             chunk = " ".join(words[start:end])
             new_row = row.to_dict()
             new_row['chunked_text'] = chunk
-            new_row['original_text'] = text  # Keep the original full text
             new_rows.append(new_row)
             start += (chunk_size - overlap)
             if start < overlap:  # Ensure we don't go negative
@@ -52,5 +58,6 @@ chunked_df['chunked_char_count'] = chunked_df['chunked_text'].str.len()
 print(f"\nShape of the original DataFrame: {df.shape}")
 print(f"Shape of the chunked DataFrame: {chunked_df.shape}")
 
+directory_path = 'C:\\programming_projects\\RAG_fine_tune\\RAG_pipeline_ASU_website\\data\\'
 print(directory_path + 'chunked_' +file_name)
-chunked_df.to_csv(directory_path + 'chunked_' +file_name)
+chunked_df.to_csv(directory_path + 'chunked_' +file_name, index=False)
