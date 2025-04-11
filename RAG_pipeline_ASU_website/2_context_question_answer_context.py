@@ -19,11 +19,11 @@ formatted_datetime = now.strftime("%Y_%m_%d_%H")
 
 directory_path = 'C:\\programming_projects\\RAG_fine_tune\\RAG_pipeline_ASU_website\\data\\'
 print(directory_path + 'chunked_' +file_name)
-chunked_df = pd.read_csv(directory_path + 'chunked_' +file_name, nrows=100)
+chunked_df = pd.read_csv(directory_path + 'chunked_' +file_name)
 
 ##########################################################
 df_out = pd.DataFrame([])
-for i in range(0, 12): ##len(chunked_df['chunked_text'])):
+for i in range(0, len(chunked_df['chunked_text'])):
     print(i, datetime.datetime.now())
 
     cleaned_string = chunked_df['cleaned_text'].loc[i]
