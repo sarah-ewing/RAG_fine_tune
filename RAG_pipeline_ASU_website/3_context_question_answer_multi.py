@@ -8,8 +8,12 @@ import datetime
 import requests
 import re
 
+from dotenv import load_dotenv
+load_dotenv()
+
 ASU_key = os.environ.get("ASU_key")
 LLM_url = os.environ.get("LLM_url")
+print(LLM_url)
 
 def make_llm_request(query, api_key, api_url):
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
@@ -54,16 +58,46 @@ def cqa_api(chunked_df, i, ASU_key, LLM_url):
     chunked_word_count = chunked_df['chunked_word_count'].iloc[i]
     orig_word_count = chunked_df['orig_word_count'].iloc[i]
 
-    qa_query = f"""given that the following text from the webpage {title} on url {url}, here is a text chunk limited to 500 words:\n {chunk}\n\n what are some good questions to ask about the text chunk? Please respond with a question and 3 different answers for each question. There should be a total of 3 questions, with having 3 different answers (for a total of 9 unique answers). ... (rest of the prompt)"""
+    qa_query = f"""given that the following text from the webpage {title} on url {url}, here is a text chunk limited to 500 words:\n {chunk}\n\n 
+                what are some good questions to ask about the text chunk? Please respond with a question and 3 different answers for each question.  There should be a total of 3 questions, with having 3 different answers (for a total of 9 unique answers).
+
+                the questions need to be well defined. Try to use the text as much as possible when crafting the answer. Answers need to be at least 2 sentences long. Do not use the phrase "The text," and avoid similar language. Rephrase the question in the answer.
+
+                Please use the following format for the response:
+
+                **Question 1:**
+                **Question 1 Answer 1:**
+                **Question 1 Answer 2:**
+                **Question 1 Answer 3:**
+
+                **Question 2:**
+                **Question 2 Answer 1:**
+                **Question 2 Answer 2:**
+                **Question 2 Answer 3:**
+
+                **Question 3:**
+                **Question 3 Answer 1:**
+                **Question 3 Answer 2:**
+                **Question 3 Answer 3:**
+                """.format(
+                    title = title,
+                    url = url,
+                    chunk=chunk)
     llm_response = make_llm_request(qa_query, ASU_key, LLM_url)
 
     return parse_cqa_response(llm_response, title, url, chunked_word_count, orig_word_count, chunk)
 
-def worker(thread_id, all_data, task_queue, output_queues):
+def worker(thread_id, all_data, task_queue, output_queues, cqa_api, ASU_key, LLM_url):
     """Worker function that gets tasks from the queue and processes them."""
     while True:
         try:
-            start_index, end_index = task_queue.get(timeout=1)
+            start_index, end_index = task_queue.get(timeout=1)  # Unpack the tuple
+
+            if start_index >= len(all_data):
+                task_queue.task_done()
+                break
+
+            # The rest of your worker function remains the same
             thread_data_chunk = all_data.iloc[start_index:end_index].copy()
             all_processed_dfs = []
             for i in thread_data_chunk.index: # Iterate through the rows of the chunk
@@ -113,7 +147,7 @@ def writer_worker(queue, thread_id, all_data):
 
             if len(processed_original_rows) >= 10:
                 output_start_index = min(processed_original_rows)
-                filename = directory_path+'\\silver_data'+f"processed_data_thread_{thread_id}_start_{output_start_index}_10rows.csv"
+                filename = directory_path+'silver_data\\'+f"processed_data_thread_{thread_id}_start_{output_start_index}_10rows.csv"
                 local_df.to_csv(filename, index=False)
                 timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
                 print(f"{timestamp} Writer Thread {thread_id}: Saved {len(local_df)} rows (from 10 original) to {filename}.")
@@ -130,7 +164,7 @@ def writer_worker(queue, thread_id, all_data):
     # Save any remaining data if the stop signal is received before 10 rows
     if not local_df.empty:
         output_start_index = min(processed_original_rows) if processed_original_rows else "partial"
-        filename = directory_path+'\\silver_data'+f"processed_data_thread_{thread_id}_start_{output_start_index}_partial.csv"
+        filename = directory_path+'silver_data\\'+f"processed_data_thread_{thread_id}_start_{output_start_index}_partial.csv"
         local_df.to_csv(filename, index=False)
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         print(f"{timestamp} Writer Thread {thread_id}: Saved remaining {len(local_df)} rows to {filename}.")
@@ -139,7 +173,7 @@ if __name__ == "__main__":
     threads = []
     writer_threads = []
     num_threads = 3
-    rows_per_thread = 1  # Process one row at a time with the API call
+    rows_per_thread = 100  # Process 100 rows at a time
     original_rows_per_writer_file = 10
 
     load_dotenv()
@@ -150,22 +184,24 @@ if __name__ == "__main__":
     print(f"{timestamp} {file_path}")
 
     try:
-        all_data = pd.read_csv(file_path) # Increased nrows for testing
+        all_data = pd.read_csv(file_path, nrows=5900) # Increased nrows for testing
         total_rows = len(all_data)
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         print(f"{timestamp} Total rows: {total_rows}, using {num_threads} processing threads and {num_threads} writer threads.")
-        
+
         start_processing_row = 5500
         task_queue = Queue()
         output_queues = [Queue() for _ in range(num_threads)]
+        chunk_size = rows_per_thread  # Use the defined rows_per_thread
 
-        # Populate the task queue starting from the specified row
-        for i in range(start_processing_row, total_rows):
-            task_queue.put((i, i + 1))
+        # Populate the task queue with chunks of 100 rows
+        for i in range(start_processing_row, total_rows, chunk_size):
+            end_index = min(i + chunk_size, total_rows)
+            task_queue.put((i, end_index))
 
         # Create and start the processing threads
         for i in range(num_threads):
-            thread = threading.Thread(target=worker, args=(i + 1, all_data, task_queue, output_queues))
+            thread = threading.Thread(target=worker, args=(i + 1, all_data, task_queue, output_queues, cqa_api, ASU_key, LLM_url))
             threads.append(thread)
             thread.daemon = True
             thread.start()
