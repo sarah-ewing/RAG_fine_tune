@@ -13,7 +13,6 @@ load_dotenv()
 
 ASU_key = os.environ.get("ASU_key")
 LLM_url = os.environ.get("LLM_url")
-print(LLM_url)
 
 def make_llm_request(query, api_key, api_url):
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
@@ -125,8 +124,8 @@ def worker(thread_id, all_data, task_queue, output_queues, cqa_api, ASU_key, LLM
             print(f"{timestamp} Thread {thread_id}: An error occurred in worker: {e}")
             break
 
-def writer_worker(queue, thread_id, all_data):
-    """Worker function that takes dataframes and their start index from a queue and appends to a local dataframe until 10 original rows are processed, then writes to CSV."""
+def writer_worker(queue, thread_id, all_data, rows_per_thread):
+    """Worker function that takes dataframes and their start index from a queue and appends to a local dataframe from processed_original_rows original rows are processed, then writes to CSV."""
     local_df = pd.DataFrame()
     processed_original_rows = set()
     while True:
@@ -147,10 +146,10 @@ def writer_worker(queue, thread_id, all_data):
 
             if len(processed_original_rows) >= 10:
                 output_start_index = min(processed_original_rows)
-                filename = directory_path+'silver_data\\'+f"processed_data_thread_{thread_id}_start_{output_start_index}_10rows.csv"
+                filename = directory_path+'silver_data\\'+f"processed_data_thread_{thread_id}_start_{output_start_index}_{rows_per_thread}_rows.csv"
                 local_df.to_csv(filename, index=False)
                 timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                print(f"{timestamp} Writer Thread {thread_id}: Saved {len(local_df)} rows (from 10 original) to {filename}.")
+                print(f"{timestamp} Writer Thread {thread_id}: Saved {len(local_df)} rows (from {len(processed_original_rows)} original rows) to {filename}.")
                 local_df = pd.DataFrame()
                 processed_original_rows = set()
 
@@ -172,9 +171,8 @@ def writer_worker(queue, thread_id, all_data):
 if __name__ == "__main__":
     threads = []
     writer_threads = []
-    num_threads = 3
-    rows_per_thread = 100  # Process 100 rows at a time
-    original_rows_per_writer_file = 10
+    num_threads = 10
+    rows_per_thread = 500  # Process 100 rows at a time
 
     load_dotenv()
     file_name = os.environ.get("file_name")
@@ -184,19 +182,19 @@ if __name__ == "__main__":
     print(f"{timestamp} {file_path}")
 
     try:
-        all_data = pd.read_csv(file_path, nrows=5900) # Increased nrows for testing
+        all_data = pd.read_csv(file_path) ##, nrows=5900) # Increased nrows for testing
         total_rows = len(all_data)
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         print(f"{timestamp} Total rows: {total_rows}, using {num_threads} processing threads and {num_threads} writer threads.")
 
-        start_processing_row = 5500
+        start_processing_row = 110600
         task_queue = Queue()
         output_queues = [Queue() for _ in range(num_threads)]
-        chunk_size = rows_per_thread  # Use the defined rows_per_thread
+    
 
         # Populate the task queue with chunks of 100 rows
-        for i in range(start_processing_row, total_rows, chunk_size):
-            end_index = min(i + chunk_size, total_rows)
+        for i in range(start_processing_row, total_rows, rows_per_thread):
+            end_index = min(i + rows_per_thread, total_rows)
             task_queue.put((i, end_index))
 
         # Create and start the processing threads
@@ -208,7 +206,7 @@ if __name__ == "__main__":
 
         # Create and start the writer threads
         for i in range(num_threads):
-            writer_thread = threading.Thread(target=writer_worker, args=(output_queues[i], i + 1, all_data))
+            writer_thread = threading.Thread(target=writer_worker, args=(output_queues[i], i + 1, all_data, rows_per_thread))
             writer_threads.append(writer_thread)
             writer_thread.daemon = True
             writer_thread.start()
