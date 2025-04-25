@@ -178,5 +178,5 @@ for ii in range(start_ii, len(df['question'])):
     except Exception as e:
         print(f"Unexpected error: {e}")
 
-
-    df.to_csv('C:\\programming_projects\\RAG_fine_tune\\RAG_pipeline_ASU_website\\data\\5_context_question_answer_score_pt2.csv')
+    if ii % 100 == 0:
+        df.to_csv('C:\\programming_projects\\RAG_fine_tune\\RAG_pipeline_ASU_website\\data\\5_context_question_answer_score_pt2.csv')
